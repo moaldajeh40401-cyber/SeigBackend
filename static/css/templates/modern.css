@@ -1,0 +1,6 @@
+@import url("classic.css");
+
+.template-modern .resume-page { max-width: 8.5in; }
+.template-modern .resume-header { text-align: left; border-left: 5px solid #2563eb; padding-left: 1rem; }
+.template-modern .resume-name { color: #1e3a8a; text-transform: none; }
+.template-modern .section-heading { border-color: #2563eb; color: #1e3a8a; }

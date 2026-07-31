@@ -1,0 +1,143 @@
+:root {
+  color-scheme: light;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: #ffffff;
+  color: #111111;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 11pt;
+  line-height: 1.45;
+}
+
+body {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.resume-page {
+  max-width: 8.5in;
+  margin: 0 auto;
+  padding: 0.55in 0.65in 0.6in;
+}
+
+.resume-header {
+  text-align: center;
+  margin-bottom: 0.4rem;
+}
+
+.resume-name {
+  margin: 0;
+  font-size: 22pt;
+  line-height: 1.05;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+.resume-title {
+  margin: 0.18rem 0 0;
+  font-size: 10.5pt;
+  font-weight: 600;
+}
+
+.resume-contact {
+  margin: 0.25rem 0 0;
+  font-size: 9.2pt;
+  color: #2c2c2c;
+  word-break: break-word;
+}
+
+.resume-section {
+  margin-top: 0.55rem;
+}
+
+.section-heading {
+  margin: 0 0 0.28rem;
+  padding-bottom: 0.12rem;
+  border-bottom: 1px solid #1a1a1a;
+  font-size: 11.5pt;
+  line-height: 1.1;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.summary-text {
+  margin: 0;
+  font-size: 10.5pt;
+}
+
+.entry {
+  margin-bottom: 0.42rem;
+}
+
+.entry-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.entry-title {
+  margin: 0;
+  font-size: 10.5pt;
+  font-weight: 700;
+}
+
+.entry-meta,
+.entry-date,
+.entry-description,
+.entry-tech {
+  margin: 0.02rem 0 0;
+  font-size: 10pt;
+}
+
+.entry-date {
+  white-space: nowrap;
+  font-weight: 700;
+}
+
+.entry-description {
+  margin-top: 0.1rem;
+}
+
+.bullet-list,
+.list-block,
+.skills-list {
+  margin: 0.18rem 0 0;
+  padding-left: 1rem;
+}
+
+.bullet-list li,
+.list-block li,
+.skills-list li {
+  margin: 0 0 0.12rem;
+}
+
+.skills-list {
+  list-style: disc;
+  columns: 1;
+}
+
+.skill-level {
+  color: #444;
+}
+
+@page {
+  margin: 0.45in;
+}
+
+@media print {
+  .resume-page {
+    max-width: none;
+    padding: 0;
+  }
+
+  .resume-section {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}
