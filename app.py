@@ -3,29 +3,51 @@ from __future__ import annotations
 import os
 
 from flask import Flask, jsonify
+from flask_cors import CORS
+from flask_limiter.errors import RateLimitExceeded
 from flask_jwt_extended.exceptions import (
 	NoAuthorizationError,
 )
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from config import Config
-from extensions import db, jwt, migrate
+from extensions import db, jwt, limiter, migrate
 from routes import register_routes
 
 
 def create_app(config_object: type[Config] | None = None) -> Flask:
 	app = Flask(__name__)
 	app.config.from_object(config_object or Config)
+	allowed_origins = {
+		origin.strip().rstrip("/")
+		for origin in os.getenv("FRONTEND_URLS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
+		if origin.strip()
+	}
+	CORS(app, resources={r"/api/*": {"origins": list(allowed_origins)}}, allow_headers=["Content-Type", "Authorization"], methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"])
 
 	db.init_app(app)
 	migrate.init_app(app, db)
 	jwt.init_app(app)
+	limiter.init_app(app)
 
 	register_routes(app)
 	register_error_handlers(app)
 	register_cli_commands(app)
+	register_security_headers(app)
 
 	return app
+
+
+def register_security_headers(app: Flask) -> None:
+	@app.after_request
+	def add_security_headers(response):
+		response.headers.setdefault("X-Content-Type-Options", "nosniff")
+		response.headers.setdefault("X-Frame-Options", "DENY")
+		response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+		response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+		if os.getenv("FLASK_ENV", "").lower() == "production":
+			response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		return response
 
 
 def register_cli_commands(app: Flask) -> None:
@@ -64,6 +86,14 @@ def register_error_handlers(app: Flask) -> None:
 	@app.errorhandler(NoAuthorizationError)
 	def handle_missing_token(error):
 		return jsonify({"error": "authorization_required", "message": str(error)}), 401
+
+	@app.errorhandler(413)
+	def request_too_large(error):
+		return jsonify({"error": "payload_too_large", "message": "Request body is too large"}), 413
+
+	@app.errorhandler(RateLimitExceeded)
+	def rate_limit_exceeded(error):
+		return jsonify({"error": "rate_limit_exceeded", "message": "Too many requests. Please try again later."}), 429
 
 	@jwt.unauthorized_loader
 	def handle_jwt_missing(reason: str):

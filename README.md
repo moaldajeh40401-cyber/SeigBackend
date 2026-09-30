@@ -5,6 +5,29 @@ resumes, sections, templates, previews, PDF downloads, job descriptions, and
 deterministic ATS analyses. Scores come from keyword coverage and resume
 completeness; AI is reserved for optional text-improvement features.
 
+## Render and Supabase deployment
+
+The repository includes a root `render.yaml` with these production commands:
+
+```text
+Build: pip install -r backend/requirements.txt
+Start: gunicorn --chdir backend app:app --bind 0.0.0.0:$PORT
+```
+
+Set `DATABASE_URL` to the Supabase PostgreSQL connection string in Render.
+The application accepts `postgresql://` and `postgres://` URLs and uses
+`psycopg2-binary`. Set `FRONTEND_URLS` to a comma-separated list containing
+the deployed React origin and local development origins.
+
+`GET /api/health` executes `SELECT 1` and returns `healthy` only when the
+configured database connection is available.
+
+Expensive AI, PDF, ATS-analysis, login, and registration routes require JWT
+authentication where applicable and have route-level rate limits. Set
+`RATELIMIT_STORAGE_URI` to a shared Redis URL in production when running more
+than one backend instance; the default `memory://` store is suitable only for
+a single development or single-instance service.
+
 ## Setup
 
 Install dependencies and configure environment variables:
@@ -44,7 +67,7 @@ Generated PDF records are created only by the server and are stored beneath
 
 ## Future ATS integration
 
-Do not expose a provider API key to the Flutter app. A future Qwen service
+Do not expose a provider API key to the React app. A future Qwen service
 should only rewrite user-selected text (summary, experience bullets, or project
 descriptions); it must not control the ATS score.
 

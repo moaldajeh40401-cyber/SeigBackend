@@ -5,6 +5,7 @@ from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_requir
 from sqlalchemy.exc import IntegrityError
 
 from extensions import db
+from extensions import limiter
 from models import User
 from utils.security import hash_password, verify_password
 from utils.validation import is_valid_email, is_valid_location, is_valid_phone_number
@@ -18,6 +19,7 @@ def _extract_payload() -> dict:
 
 
 @auth_bp.post("/register")
+@limiter.limit("5 per hour")
 def register():
     payload = _extract_payload()
     full_name = (payload.get("full_name") or "").strip()
@@ -67,6 +69,7 @@ def register():
 
 
 @auth_bp.post("/login")
+@limiter.limit("10 per minute")
 def login():
     payload = _extract_payload()
     email = (payload.get("email") or "").strip().lower()

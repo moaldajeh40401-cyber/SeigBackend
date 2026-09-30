@@ -3,7 +3,7 @@ from __future__ import annotations
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import get_jwt_identity, jwt_required
 
-from extensions import db
+from extensions import db, limiter
 from models import ATSAnalysis, JobDescription, Resume, User
 from services.ats_service import analyze_resume
 from utils.validation import is_valid_url, normalize_url
@@ -88,6 +88,7 @@ def delete_job(job_id: int):
 
 @ats_bp.post("/resumes/<int:resume_id>/ats-analyses")
 @jwt_required()
+@limiter.limit("10 per hour")
 def create_analysis(resume_id: int):
     user = _user(); resume = Resume.query.filter_by(id=resume_id, user_id=user.id).first()
     if resume is None: return jsonify({"error": "not_found", "message": "Resume not found"}), 404

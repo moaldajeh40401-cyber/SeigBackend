@@ -8,7 +8,7 @@ from pathlib import Path
 from flask import Blueprint, current_app, jsonify, render_template, request, send_file
 from flask_jwt_extended import get_jwt_identity, jwt_required
 
-from extensions import db
+from extensions import db, limiter
 from models import GeneratedPDF, Resume, Template, User
 from services.pdf_service import (
     build_resume_pdf_bytes,
@@ -328,6 +328,7 @@ def preview_resume(resume_id: int):
 
 @resumes_bp.post("/<int:resume_id>/pdf")
 @jwt_required()
+@limiter.limit("5 per hour")
 def generate_resume_pdf(resume_id: int):
     user = _current_user()
     if user is None:
@@ -395,6 +396,7 @@ def latest_resume_pdf(resume_id: int):
 
 @resumes_bp.get("/<int:resume_id>/download")
 @jwt_required()
+@limiter.limit("5 per hour")
 def download_resume(resume_id: int):
     user = _current_user()
     if user is None:
