@@ -4,12 +4,14 @@ from datetime import datetime, timezone
 from io import BytesIO
 from hashlib import sha256
 from pathlib import Path
+from types import SimpleNamespace
 
 from flask import Blueprint, current_app, jsonify, render_template, request, send_file
 from flask_jwt_extended import get_jwt_identity, jwt_required
+from werkzeug.utils import secure_filename
 
 from extensions import db, limiter
-from models import Education, Experience, GeneratedPDF, Language, Project, Resume, Skill, Template, User
+from models import GeneratedPDF, Resume, Template, User
 from services.pdf_service import (
     build_resume_pdf_bytes,
     delete_managed_pdf,
@@ -146,6 +148,73 @@ def _render_resume_html(resume: Resume, template: Template) -> str:
     return render_template(template_name, resume=build_resume_context(resume), css_path=css_path, template=template)
 
 
+def _draft_pdf_context(payload: dict, user: User) -> SimpleNamespace:
+    """Build a render-only resume from the current editor payload."""
+    def text(value: object) -> str | None:
+        return value.strip() if isinstance(value, str) and value.strip() else None
+
+    def date_display(value: object) -> str | None:
+        candidate = text(value)
+        if not candidate:
+            return None
+        try:
+            parsed = datetime.strptime(candidate[:7], "%Y-%m")
+            return parsed.strftime("%b %Y")
+        except ValueError:
+            return None
+
+    def rows(key: str) -> list[dict]:
+        value = payload.get(key)
+        return [item for item in value if isinstance(item, dict)] if isinstance(value, list) else []
+
+    person = SimpleNamespace(
+        full_name=text(payload.get("full_name")) or user.full_name,
+        email=text(payload.get("email")) or user.email,
+        phone_number=text(payload.get("phone")) or user.phone_number,
+        location=text(payload.get("location")) or user.location,
+    )
+    experiences = [SimpleNamespace(
+        job_title=text(item.get("job_title")), company=text(item.get("company")),
+        location=text(item.get("location")), start_date=text(item.get("start_date")),
+        end_date=text(item.get("end_date")), start_date_display=date_display(item.get("start_date")),
+        end_date_display=date_display(item.get("end_date")), is_current=bool(item.get("is_current")),
+        description=text(item.get("description")),
+        achievements=[text(entry) for entry in item.get("achievements", []) if text(entry)]
+        if isinstance(item.get("achievements"), list) else [],
+    ) for item in rows("experiences")]
+    educations = [SimpleNamespace(
+        institution=text(item.get("institution")), degree=text(item.get("degree")),
+        location=text(item.get("location")), start_date=text(item.get("start_date")),
+        end_date=text(item.get("end_date")), start_date_display=date_display(item.get("start_date")),
+        end_date_display=date_display(item.get("end_date")), gpa=text(item.get("gpa")),
+        description=text(item.get("description")),
+    ) for item in rows("educations")]
+    projects = []
+    for item in rows("projects"):
+        stack = item.get("tech_stack")
+        if isinstance(stack, dict):
+            stack = list(stack.values())
+        elif isinstance(stack, str):
+            stack = [part.strip() for part in stack.split(",") if part.strip()]
+        elif not isinstance(stack, list):
+            stack = []
+        projects.append(SimpleNamespace(name=text(item.get("name")), url=text(item.get("url")),
+                                        description=text(item.get("description")), tech_stack=stack))
+    skills = [SimpleNamespace(name=text(item.get("name")), proficiency=text(item.get("proficiency")))
+              for item in rows("skills") if text(item.get("name"))]
+    languages = [SimpleNamespace(name=text(item.get("name")), proficiency=text(item.get("proficiency")))
+                 for item in rows("languages") if text(item.get("name"))]
+    full_name = person.full_name or "Resume"
+    return SimpleNamespace(
+        title=text(payload.get("title")) or f"{full_name} Resume",
+        target_role=text(payload.get("target_role")), professional_summary=text(payload.get("professional_summary")),
+        user=person, linkedin_url=text(payload.get("linkedin_url")), github_url=text(payload.get("github_url")),
+        portfolio_url=text(payload.get("portfolio_url")), website_url=text(payload.get("website_url")),
+        experiences=experiences, educations=educations, projects=projects, skills=skills,
+        certificates=[], languages=languages,
+    )
+
+
 @resumes_bp.post("/export")
 @jwt_required()
 @limiter.limit("5 per hour")
@@ -155,9 +224,8 @@ def export_resume(resume_id: int | None = None):
         return jsonify({"error": "not_found", "message": "User not found"}), 404
 
     payload = _extract_payload()
-    title = (payload.get("title") or "").strip()
-    if not title:
-        return jsonify({"error": "validation_error", "message": "title is required"}), 400
+    if not payload:
+        return jsonify({"error": "validation_error", "message": "Resume draft JSON is required"}), 400
 
     links = {field: (payload.get(field) or "").strip() or None for field in ("linkedin_url", "github_url", "portfolio_url", "website_url")}
     link_error = _validate_links(links)
@@ -165,71 +233,27 @@ def export_resume(resume_id: int | None = None):
         return jsonify(link_error[0]), link_error[1]
     summary = (payload.get("professional_summary") or "").strip() or None
 
-    def parse_date(value):
-        if not value:
-            return None
-        try:
-            normalized = str(value)
-            if len(normalized) == 7:
-                normalized = f"{normalized}-01"
-            return datetime.fromisoformat(normalized).date()
-        except ValueError:
-            return None
-
-    resume = Resume(
-        user_id=user.id,
-        title=title,
-        target_role=(payload.get("target_role") or "").strip() or None,
-        professional_summary=summary,
-        status=_normalize_status(payload.get("status")),
-        **links,
-    )
-    for item in payload.get("experiences", []):
-        if not item.get("company") or not item.get("job_title"):
-            return jsonify({"error": "validation_error", "message": "experience company and job_title are required"}), 400
-        resume.experiences.append(Experience(
-            company=str(item["company"]).strip(), job_title=str(item["job_title"]).strip(),
-            location=(item.get("location") or "").strip() or None, start_date=parse_date(item.get("start_date")),
-            end_date=parse_date(item.get("end_date")), is_current=bool(item.get("is_current")),
-            achievements=item.get("achievements") if isinstance(item.get("achievements"), list) else [],
-            sort_order=int(item.get("sort_order", 0)),
-        ))
-    for item in payload.get("educations", []):
-        if not item.get("institution"):
-            return jsonify({"error": "validation_error", "message": "education institution is required"}), 400
-        resume.educations.append(Education(
-            institution=str(item["institution"]).strip(), degree=(item.get("degree") or "").strip() or None,
-            field_of_study=(item.get("field_of_study") or "").strip() or None, location=(item.get("location") or "").strip() or None,
-            start_date=parse_date(item.get("start_date")), end_date=parse_date(item.get("end_date")), sort_order=int(item.get("sort_order", 0)),
-        ))
-    for item in payload.get("skills", []):
-        if item.get("name"):
-            resume.skills.append(Skill(name=str(item["name"]).strip(), sort_order=int(item.get("sort_order", 0))))
-    for item in payload.get("languages", []):
-        if item.get("name"):
-            resume.languages.append(Language(name=str(item["name"]).strip(), proficiency=(item.get("proficiency") or "").strip() or None, sort_order=int(item.get("sort_order", 0))))
-    for item in payload.get("projects", []):
-        if item.get("name"):
-            tech_stack = item.get("tech_stack") if isinstance(item.get("tech_stack"), dict) else ({"value": item.get("tech_stack")} if item.get("tech_stack") else {})
-            resume.projects.append(Project(name=str(item["name"]).strip(), description=(item.get("description") or "").strip() or None, url=(item.get("url") or "").strip() or None, tech_stack=tech_stack, sort_order=int(item.get("sort_order", 0))))
-
-    db.session.add(resume)
-    db.session.commit()
-    template = _resolve_template_for_resume(resume)
+    template_id, template_error = _resolve_template_id(payload)
+    if template_error is not None:
+        return jsonify(template_error[0]), template_error[1]
+    template = db.session.get(Template, template_id) if template_id else _resolve_template_for_resume(SimpleNamespace(template=None))
+    if template is None:
+        return jsonify({"error": "invalid_template", "message": "Selected template is unavailable"}), 400
+    draft = _draft_pdf_context({**payload, **links, "professional_summary": summary}, user)
     try:
-        pdf_bytes = build_resume_pdf_bytes(_render_resume_html(resume, template))
+        template_name = template.template_path.removeprefix("templates/")
+        if template_name != "classic.html":
+            raise ValueError("Template is not a supported resume layout")
+        css_file = Path(current_app.static_folder) / "css" / "templates" / f"{template.name}.css"
+        css_path = css_file.resolve().as_uri() if css_file.exists() else None
+        html = render_template(template_name, resume=draft, css_path=css_path, template=template)
+        pdf_bytes = build_resume_pdf_bytes(html)
     except ValueError as error:
-        return jsonify({"error": "invalid_template", "message": str(error)}), 500
+        return jsonify({"error": "invalid_template", "message": str(error)}), 400
     except RuntimeError as error:
         return jsonify({"error": "pdf_unavailable", "message": str(error)}), 503
 
-    generated_dir = ensure_generated_dir()
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-    file_name = f"resume_{resume.id}_v{resume.version}_{timestamp}.pdf"
-    file_path = generated_dir / file_name
-    file_path.write_bytes(pdf_bytes)
-    db.session.add(GeneratedPDF(user_id=user.id, resume_id=resume.id, file_path=str(file_path), file_name=file_name, file_size=len(pdf_bytes), checksum=sha256(pdf_bytes).hexdigest()))
-    db.session.commit()
+    file_name = f"{secure_filename(draft.user.full_name or 'Resume') or 'Resume'}_Resume.pdf"
     return send_file(BytesIO(pdf_bytes), mimetype="application/pdf", as_attachment=True, download_name=file_name, max_age=0)
 
 

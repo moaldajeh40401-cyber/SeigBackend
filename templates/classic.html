@@ -15,16 +15,19 @@
         <p class="resume-title">
           {{ resume.target_role if resume and resume.target_role else 'Professional Title' }}
         </p>
-        <p class="resume-contact">
-          {% set contact_items = [] %}
-          {% if resume and resume.user and resume.user.location %}{% set _ = contact_items.append(resume.user.location) %}{% endif %}
-          {% if resume and resume.user and resume.user.email %}{% set _ = contact_items.append(resume.user.email) %}{% endif %}
-          {% if resume and resume.user and resume.user.phone_number %}{% set _ = contact_items.append(resume.user.phone_number) %}{% endif %}
-          {% if resume and resume.linkedin_url %}{% set _ = contact_items.append(resume.linkedin_url) %}{% endif %}
-          {% if resume and resume.github_url %}{% set _ = contact_items.append(resume.github_url) %}{% endif %}
-          {% if resume and resume.portfolio_url %}{% set _ = contact_items.append(resume.portfolio_url) %}{% endif %}
-          {{ contact_items | join(' | ') if contact_items else 'City, Country | email@example.com | +1 234 567 890 | linkedin.com/in/yourname' }}
-        </p>
+        {% set contact_items = [] %}
+        {% if resume and resume.user and resume.user.location %}{% set _ = contact_items.append(resume.user.location) %}{% endif %}
+        {% if resume and resume.user and resume.user.email %}{% set _ = contact_items.append(resume.user.email) %}{% endif %}
+        {% if resume and resume.user and resume.user.phone_number %}{% set _ = contact_items.append(resume.user.phone_number) %}{% endif %}
+        {% if contact_items %}<p class="resume-contact">{{ contact_items | join(' | ') }}</p>{% endif %}
+        {% set profile_links = [('LinkedIn', resume.linkedin_url), ('GitHub', resume.github_url), ('Portfolio', resume.portfolio_url), ('Website', resume.website_url)] %}
+        {% if resume.linkedin_url or resume.github_url or resume.portfolio_url or resume.website_url %}
+        <ul class="profile-links">
+          {% for label, url in profile_links if url %}
+          <li><strong>{{ label }}:</strong> <a href="{{ url }}">{{ url }}</a></li>
+          {% endfor %}
+        </ul>
+        {% endif %}
       </header>
 
       {% if resume and resume.professional_summary %}
