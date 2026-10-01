@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 
-from sqlalchemy.ext.mutable import MutableDict
+from sqlalchemy.ext.mutable import MutableDict, MutableList
 
 from extensions import db
 
@@ -227,7 +227,7 @@ class Experience(db.Model):
     end_date = db.Column(db.Date, nullable=True)
     is_current = db.Column(db.Boolean, nullable=False, default=False)
     description = db.Column(db.Text, nullable=True)
-    achievements = db.Column(MutableDict.as_mutable(db.JSON), nullable=False, default=dict)
+    achievements = db.Column(MutableList.as_mutable(db.JSON), nullable=False, default=list)
     sort_order = db.Column(db.Integer, nullable=False, default=0)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utc_now)
     updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now)
