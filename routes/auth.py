@@ -28,8 +28,8 @@ def register():
     location = (payload.get("location") or "").strip() or None
     password = payload.get("password") or ""
 
-    if not full_name or not email or not phone_number or not location or not password:
-        return jsonify({"error": "validation_error", "message": "full_name, email, phone_number, location, and password are required"}), 400
+    if not full_name or not email or not phone_number or not password:
+        return jsonify({"error": "validation_error", "message": "full_name, email, phone_number, and password are required"}), 400
 
     if len(full_name) < 2 or len(full_name) > 100:
         return jsonify({"error": "validation_error", "message": "full_name must be between 2 and 100 characters"}), 400
@@ -40,7 +40,7 @@ def register():
     if not is_valid_phone_number(phone_number):
         return jsonify({"error": "validation_error", "message": "phone_number must be valid"}), 400
 
-    if not is_valid_location(location):
+    if location and not is_valid_location(location):
         return jsonify({"error": "validation_error", "message": "location must be valid"}), 400
 
     if len(password) < 8:
