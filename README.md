@@ -88,7 +88,7 @@ run this backend in a Linux/Docker image with those system packages installed.
 ## Auth
 
 - Register and login return a long-lived access token.
-- There is no email verification flow in the backend.
+- Registration validates email format and prevents duplicate addresses. Users can sign in immediately; mailbox ownership is not verified.
 - Use `Authorization: Bearer <token>` on protected routes.
 
 ## Endpoints

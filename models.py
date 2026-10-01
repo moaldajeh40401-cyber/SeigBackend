@@ -26,7 +26,6 @@ class User(db.Model):
     phone_number = db.Column(db.String(40), nullable=True)
     location = db.Column(db.String(255), nullable=True)
     password_hash = db.Column(db.String(255), nullable=False)
-    is_email_verified = db.Column(db.Boolean, nullable=False, default=True)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utc_now)
     updated_at = db.Column(
         db.DateTime(timezone=True),

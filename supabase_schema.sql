@@ -11,7 +11,6 @@ create table public.users (
     phone_number varchar(40),
     location varchar(255),
     password_hash varchar(255) not null,
-    is_email_verified boolean not null default true,
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now()
 );
