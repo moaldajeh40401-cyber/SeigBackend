@@ -164,9 +164,6 @@ def export_resume(resume_id: int | None = None):
     if link_error is not None:
         return jsonify(link_error[0]), link_error[1]
     summary = (payload.get("professional_summary") or "").strip() or None
-    summary_error = _validate_summary(summary)
-    if summary_error is not None:
-        return jsonify(summary_error[0]), summary_error[1]
 
     def parse_date(value):
         if not value:

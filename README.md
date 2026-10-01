@@ -58,7 +58,7 @@ application configuration, not user-editable content.
 ## API areas
 
 - `/api/auth`: register, log in, and read the current user
-- `/api/resumes`: resume CRUD, HTML preview, and PDF generation/download
+- `/api/resumes`: resume CRUD, HTML preview, PDF generation/download, and `POST /api/resumes/export` for downloading a draft PDF in one request
 - `/api/resumes/:id/{experiences,educations,projects,skills,certificates,languages}`: section CRUD
 - `/api/templates`: public template listing; writes require an administrator
 
@@ -99,6 +99,7 @@ run this backend in a Linux/Docker image with those system packages installed.
 - `GET /api/auth/me`
 - `GET /api/resumes`
 - `POST /api/resumes`
+- `POST /api/resumes/export`
 - `GET /api/resumes/<id>`
 - `PATCH /api/resumes/<id>`
 - `DELETE /api/resumes/<id>`
