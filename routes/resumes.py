@@ -9,7 +9,7 @@ from flask import Blueprint, current_app, jsonify, render_template, request, sen
 from flask_jwt_extended import get_jwt_identity, jwt_required
 
 from extensions import db, limiter
-from models import GeneratedPDF, Resume, Template, User
+from models import Education, Experience, GeneratedPDF, Language, Project, Resume, Skill, Template, User
 from services.pdf_service import (
     build_resume_pdf_bytes,
     delete_managed_pdf,
@@ -144,6 +144,96 @@ def _render_resume_html(resume: Resume, template: Template) -> str:
     css_file = Path(current_app.static_folder) / "css" / "templates" / f"{template.name}.css"
     css_path = css_file.resolve().as_uri() if css_file.exists() else None
     return render_template(template_name, resume=build_resume_context(resume), css_path=css_path, template=template)
+
+
+@resumes_bp.post("/export")
+@jwt_required()
+@limiter.limit("5 per hour")
+def export_resume(resume_id: int | None = None):
+    user = _current_user()
+    if user is None:
+        return jsonify({"error": "not_found", "message": "User not found"}), 404
+
+    payload = _extract_payload()
+    title = (payload.get("title") or "").strip()
+    if not title:
+        return jsonify({"error": "validation_error", "message": "title is required"}), 400
+
+    links = {field: (payload.get(field) or "").strip() or None for field in ("linkedin_url", "github_url", "portfolio_url", "website_url")}
+    link_error = _validate_links(links)
+    if link_error is not None:
+        return jsonify(link_error[0]), link_error[1]
+    summary = (payload.get("professional_summary") or "").strip() or None
+    summary_error = _validate_summary(summary)
+    if summary_error is not None:
+        return jsonify(summary_error[0]), summary_error[1]
+
+    def parse_date(value):
+        if not value:
+            return None
+        try:
+            normalized = str(value)
+            if len(normalized) == 7:
+                normalized = f"{normalized}-01"
+            return datetime.fromisoformat(normalized).date()
+        except ValueError:
+            return None
+
+    resume = Resume(
+        user_id=user.id,
+        title=title,
+        target_role=(payload.get("target_role") or "").strip() or None,
+        professional_summary=summary,
+        status=_normalize_status(payload.get("status")),
+        **links,
+    )
+    for item in payload.get("experiences", []):
+        if not item.get("company") or not item.get("job_title"):
+            return jsonify({"error": "validation_error", "message": "experience company and job_title are required"}), 400
+        resume.experiences.append(Experience(
+            company=str(item["company"]).strip(), job_title=str(item["job_title"]).strip(),
+            location=(item.get("location") or "").strip() or None, start_date=parse_date(item.get("start_date")),
+            end_date=parse_date(item.get("end_date")), is_current=bool(item.get("is_current")),
+            achievements=item.get("achievements") if isinstance(item.get("achievements"), list) else [],
+            sort_order=int(item.get("sort_order", 0)),
+        ))
+    for item in payload.get("educations", []):
+        if not item.get("institution"):
+            return jsonify({"error": "validation_error", "message": "education institution is required"}), 400
+        resume.educations.append(Education(
+            institution=str(item["institution"]).strip(), degree=(item.get("degree") or "").strip() or None,
+            field_of_study=(item.get("field_of_study") or "").strip() or None, location=(item.get("location") or "").strip() or None,
+            start_date=parse_date(item.get("start_date")), end_date=parse_date(item.get("end_date")), sort_order=int(item.get("sort_order", 0)),
+        ))
+    for item in payload.get("skills", []):
+        if item.get("name"):
+            resume.skills.append(Skill(name=str(item["name"]).strip(), sort_order=int(item.get("sort_order", 0))))
+    for item in payload.get("languages", []):
+        if item.get("name"):
+            resume.languages.append(Language(name=str(item["name"]).strip(), proficiency=(item.get("proficiency") or "").strip() or None, sort_order=int(item.get("sort_order", 0))))
+    for item in payload.get("projects", []):
+        if item.get("name"):
+            tech_stack = item.get("tech_stack") if isinstance(item.get("tech_stack"), dict) else ({"value": item.get("tech_stack")} if item.get("tech_stack") else {})
+            resume.projects.append(Project(name=str(item["name"]).strip(), description=(item.get("description") or "").strip() or None, url=(item.get("url") or "").strip() or None, tech_stack=tech_stack, sort_order=int(item.get("sort_order", 0))))
+
+    db.session.add(resume)
+    db.session.commit()
+    template = _resolve_template_for_resume(resume)
+    try:
+        pdf_bytes = build_resume_pdf_bytes(_render_resume_html(resume, template))
+    except ValueError as error:
+        return jsonify({"error": "invalid_template", "message": str(error)}), 500
+    except RuntimeError as error:
+        return jsonify({"error": "pdf_unavailable", "message": str(error)}), 503
+
+    generated_dir = ensure_generated_dir()
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    file_name = f"resume_{resume.id}_v{resume.version}_{timestamp}.pdf"
+    file_path = generated_dir / file_name
+    file_path.write_bytes(pdf_bytes)
+    db.session.add(GeneratedPDF(user_id=user.id, resume_id=resume.id, file_path=str(file_path), file_name=file_name, file_size=len(pdf_bytes), checksum=sha256(pdf_bytes).hexdigest()))
+    db.session.commit()
+    return send_file(BytesIO(pdf_bytes), mimetype="application/pdf", as_attachment=True, download_name=file_name, max_age=0)
 
 
 @resumes_bp.get("")
