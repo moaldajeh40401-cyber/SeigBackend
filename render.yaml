@@ -5,3 +5,30 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
     healthCheckPath: /api/health
+    envVars:
+      - key: FRONTEND_URLS
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_KEY
+        sync: false
+      - key: JWT_SECRET_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: FLASK_ENV
+        value: production
+      - key: ADMIN_EMAILS
+        sync: false
+      - key: RATELIMIT_STORAGE_URI
+        value: memory://
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USERNAME
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM
+        sync: false
