@@ -3,7 +3,9 @@ services:
     name: seig-backend
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
+    # Keep one memory-efficient worker and allow the AI provider's cold start
+    # to complete before Gunicorn aborts the request.
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 120 --graceful-timeout 30 --keep-alive 5
     healthCheckPath: /api/health
     envVars:
       - key: FRONTEND_URLS

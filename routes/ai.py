@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 import os
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 from flask_jwt_extended import jwt_required
-from openai import OpenAI
+from openai import APIConnectionError, APITimeoutError, OpenAI, RateLimitError
 
 from extensions import limiter
 
@@ -25,6 +25,9 @@ Return only valid JSON with this exact shape:
 }
 Return exactly two useful alternatives. Keep each suggestion to one resume bullet.
 """.strip()
+
+DEFAULT_MODEL = "qwen/qwen-2.5-72b-instruct"
+DEFAULT_TIMEOUT_SECONDS = 75.0
 
 
 @ai_bp.post("/enhance-bullet")
@@ -46,11 +49,24 @@ def enhance_bullet():
         return jsonify({"error": "ai_unavailable", "message": "OPENROUTER_API_KEY is not configured"}), 503
 
     job_title = payload.get("job_title") if isinstance(payload.get("job_title"), str) else ""
-    client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key)
+    try:
+        timeout = float(os.getenv("AI_REQUEST_TIMEOUT_SECONDS", str(DEFAULT_TIMEOUT_SECONDS)))
+    except ValueError:
+        current_app.logger.warning("Invalid AI_REQUEST_TIMEOUT_SECONDS; using default")
+        timeout = DEFAULT_TIMEOUT_SECONDS
+    timeout = max(10.0, min(timeout, 110.0))
+
+    client = OpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=api_key,
+        timeout=timeout,
+        max_retries=0,
+    )
     try:
         completion = client.chat.completions.create(
-            model="qwen/qwen-2.5-72b-instruct",
+            model=os.getenv("OPENROUTER_MODEL", DEFAULT_MODEL),
             temperature=0.35,
+            max_tokens=300,
             response_format={"type": "json_object"},
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
@@ -77,7 +93,14 @@ def enhance_bullet():
         if len(normalized) < 2:
             raise ValueError("Model response did not contain two valid suggestions")
         return jsonify({"suggestions": normalized})
+    except (APITimeoutError, APIConnectionError):
+        current_app.logger.warning("AI provider timed out or could not be reached")
+        return jsonify({"error": "ai_timeout", "message": "The AI provider took too long to respond"}), 504
+    except RateLimitError:
+        current_app.logger.warning("AI provider rate limit reached")
+        return jsonify({"error": "ai_rate_limited", "message": "The AI provider is temporarily busy"}), 503
     except (ValueError, json.JSONDecodeError) as error:
         return jsonify({"error": "ai_invalid_response", "message": str(error)}), 502
     except Exception:
+        current_app.logger.exception("Unexpected AI enhancement failure")
         return jsonify({"error": "ai_request_failed", "message": "The AI provider could not enhance this bullet"}), 502

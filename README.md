@@ -22,6 +22,12 @@ the deployed React origin and local development origins.
 `GET /api/health` executes `SELECT 1` and returns `healthy` only when the
 configured database connection is available.
 
+The AI enhancement endpoint uses a bounded provider timeout and no SDK retries,
+so a slow OpenRouter response returns a clear API error instead of leaving a
+Gunicorn worker hanging. `AI_REQUEST_TIMEOUT_SECONDS` can be set between 10 and
+110 seconds (default: 75), and `OPENROUTER_MODEL` can override the default
+Qwen model.
+
 Expensive AI, PDF, ATS-analysis, login, and registration routes require JWT
 authentication where applicable and have route-level rate limits. Set
 `RATELIMIT_STORAGE_URI` to a shared Redis URL in production when running more
